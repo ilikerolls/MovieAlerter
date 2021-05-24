@@ -28,6 +28,8 @@ class ImdbSearcher:
         :param url_box_office_link: url_box_office_link: link to where Box imdb page is. Will use default if none
         specified
         """
+        self.matched_count = 0
+        self.too_low_count = 0
         if cat_blacklist is None:
             cat_blacklist = []
         self.lowest_rating = lowest_rating
@@ -142,14 +144,11 @@ class ImdbSearcher:
         """ Print Movies that made our vote / rating cut and the ones that did not """
         print('\n*****Movies higher than %s Rating and higher than %s Votes*****' % (
             self.lowest_rating, self.lowest_votes))
-        movies_too_low = {}
-        for movie_name, m_data in self._top_box_office_dict.items():
-            if self.get_float_int(m_data['rating']) >= self.get_float_int(self.lowest_rating) and self.get_float_int(
-                    m_data['votes']) >= self.get_float_int(self.lowest_votes):
-                print('Movie: %s, Rating: %s, Votes: %s' % (movie_name, m_data['rating'], m_data['votes']))
-                self.set_movie_notified([movie_name])
-            else:
-                movies_too_low[movie_name] = m_data
+        (movies_matched, movies_too_low) = self.get_matched_movies()
+
+        for movie_name, m_data in movies_matched.items():
+            print('Movie: %s, Rating: %s, Votes: %s' % (movie_name, m_data['rating'], m_data['votes']))
+            self.set_movie_notified([movie_name])
 
         print('\n\n*****Movies with not enough votes or high enough ratings*****')
         for movie_name, m_data in movies_too_low.items():
@@ -224,6 +223,30 @@ class ImdbSearcher:
 
         return seen_movies
 
+    def get_matched_movies(self):
+        """
+        Create 2 dictionaries. 1 of movies that meet our required rating and 1 of movies that don't meet our
+        requirements. Also get matched and too low count
+
+        :return: dictionary of matched movies and dictionary with ratings/votes of too low movies
+        """
+        movies_too_low = {}
+        movies_matched = {}
+        self.matched_count = 0
+        self.too_low_count = 0
+
+        for movie_name, m_data in self._top_box_office_dict.items():
+            if self.get_float_int(m_data['rating']) >= self.get_float_int(
+                    self.lowest_rating) and self.get_float_int(
+                m_data['votes']) >= self.get_float_int(self.lowest_votes):
+                self.matched_count += 1
+                movies_matched[movie_name] = m_data
+            else:
+                self.too_low_count += 1
+                movies_too_low[movie_name] = m_data
+
+        return movies_matched, movies_too_low
+
     def gen_notification_msg(self):
         """
         Generate the message to send for notification method
@@ -236,14 +259,14 @@ class ImdbSearcher:
             msg = '\n*****Movies higher than %s Rating and higher than %s Votes*****\n\n' % (
                 self.lowest_rating, self.lowest_votes)
 
-            for movie_name, m_data in self._top_box_office_dict.items():
-                if self.get_float_int(m_data['rating']) >= self.get_float_int(
-                        self.lowest_rating) and self.get_float_int(
-                        m_data['votes']) >= self.get_float_int(self.lowest_votes):
-                    matched_count += 1
-                    msg += '%i. %s, Rating: %s, Votes: %s\n' % (
-                        matched_count, movie_name, m_data['rating'], m_data['votes'])
-                    self.set_movie_notified([movie_name])
+            (movies_matched, movies_too_low) = self.get_matched_movies()
+
+            matched_count = 0
+            for movie_name, m_data in movies_matched.items():
+                matched_count += 1
+                msg += '%i. %s, Rating: %s, Votes: %s\n' % (
+                    matched_count, movie_name, m_data['rating'], m_data['votes'])
+                self.set_movie_notified([movie_name])
 
             self.notify_msg = msg
 
@@ -283,6 +306,7 @@ class ImdbSearcherScheduler(ImdbSearcher):
         """
         Start Scheduler to run task ever self.hours hours
         """
+        self.job()
         self.scheduler.start()
 
     def stop(self):
@@ -296,5 +320,7 @@ class ImdbSearcherScheduler(ImdbSearcher):
         Job to run for Scheduler
         """
         self.gather_new_box_office_hits()
-        if self.pushbullet_api_key is not None:
-            self.notify_pushbullet()
+        self.get_matched_movies()
+        if self.matched_count > 0:
+            if self.pushbullet_api_key is not None:
+                self.notify_pushbullet()

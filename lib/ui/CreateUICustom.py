@@ -46,15 +46,16 @@ class CreateUICustom(CreateUI):
         Start button pushed. Activates imdb searcher
         """
         if self.running is False:
+            self.setWindowTitle('Movie Alerter - Running')
+            self.start_pushButton.setText('Stop')
+            self.running = True
+
             self.config.get_cur_app_config()
             self.imdb_scheduler = ImdbSearcherScheduler(self.config.get('MAIN', 'MinRating'),
                                                         self.config.get('MAIN', 'MinVotes'),
                                                         self.config.get_blacklist_as_list(),
                                                         pushbullet_api_key=self.config.get('MAIN', 'PushBulletAPIKey'))
             self.imdb_scheduler.start()
-            self.setWindowTitle('Movie Alerter - Running')
-            self.start_pushButton.setText('Stop')
-            self.running = True
         else:
             self.imdb_scheduler.stop()
             self.setWindowTitle('Movie Alerter - Stopped')
