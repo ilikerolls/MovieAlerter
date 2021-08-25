@@ -2,11 +2,11 @@ import urllib.request
 from bs4 import BeautifulSoup
 import sqlite3
 from datetime import datetime
-import re
 from pathlib import Path
 from pushbullet import Pushbullet
 # ImdbSearcherScheduler imports
 from apscheduler.schedulers.background import BackgroundScheduler
+from imdb import IMDb
 
 
 class ImdbSearcher:
@@ -53,7 +53,7 @@ class ImdbSearcher:
 
         title_elements = soup.select('td.titleColumn')
 
-        if not len(title_elements) > 0:
+        if len(title_elements) <= 0:
             print('ERROR: We found no movies on webpage %s. You may need update this link!' % self.url_box_office_link)
             exit(1)
 
@@ -84,27 +84,21 @@ class ImdbSearcher:
 
         return self._top_box_office_dict
 
-    def get_rating(self, movie_name, url, add_to_db=True):
+    def get_rating(self, movie_name, add_to_db=True):
         """
         Gather votes, ratings, and categories for a single movie given and add to db with the exception of ones on
         the category blacklist
 
         :param movie_name: Name of movie
-        :param url: imdb url of movie
         :param add_to_db: True = add to database, False = don't add to db(mostly for debugging)
         """
-        url_content = urllib.request.urlopen(url).read()
-        soup = BeautifulSoup(url_content, 'html.parser')
+        ia = IMDb()
+        movies = ia.search_movie(movie_name)
+        movie = ia.get_movie(movies[0].movieID)
 
-        movie_rating = soup.find(itemprop="ratingValue").get_text()
-        movie_votes = soup.find(itemprop="ratingCount").get_text()
-
-        cat_dev_subtext = soup.select('div.subtext')
-        cat_movie_links = cat_dev_subtext[0].find_all('a', {'href': re.compile(r"/search/title\?genres")})
-
-        movie_categories = []
-        for cat_link in cat_movie_links:
-            movie_categories.append(cat_link.get_text())
+        movie_categories = movie['genres']
+        movie_rating = movie['rating']
+        movie_votes = movie['votes']
 
         if add_to_db:
             cat_blacklisted = set(self.cat_blacklist).intersection(movie_categories)
@@ -300,13 +294,14 @@ class ImdbSearcherScheduler(ImdbSearcher):
         super().__init__(lowest_rating, lowest_votes, cat_blacklist, db_file, pushbullet_api_key=pushbullet_api_key,
                          url_box_office_link=url_box_office_link)
         self.scheduler = BackgroundScheduler()
-        self.job_id = self.scheduler.add_job(self.job, 'interval', hours=hours)
+        self.job_id = self.scheduler.add_job(self.job, 'interval', hours=hours, id='movie_alerter')
 
     def start(self):
         """
         Start Scheduler to run task ever self.hours hours
         """
-        self.job()
+        # Run the job once on startup
+        self.scheduler.add_job(self.job, run_date=None)
         self.scheduler.start()
 
     def stop(self):
@@ -321,6 +316,7 @@ class ImdbSearcherScheduler(ImdbSearcher):
         """
         self.gather_new_box_office_hits()
         self.get_matched_movies()
+
         if self.matched_count > 0:
             if self.pushbullet_api_key is not None:
                 self.notify_pushbullet()

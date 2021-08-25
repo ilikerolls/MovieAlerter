@@ -46,9 +46,9 @@ class CreateUICustom(CreateUI):
         Start button pushed. Activates imdb searcher
         """
         if self.running is False:
-            self.setWindowTitle('Movie Alerter - Running')
-            self.start_pushButton.setText('Stop')
-            self.running = True
+            self._extracted_from_start_stop_button_4(
+                'Movie Alerter - Running', 'Stop', True
+            )
 
             self.config.get_cur_app_config()
             self.imdb_scheduler = ImdbSearcherScheduler(self.config.get('MAIN', 'MinRating'),
@@ -58,9 +58,14 @@ class CreateUICustom(CreateUI):
             self.imdb_scheduler.start()
         else:
             self.imdb_scheduler.stop()
-            self.setWindowTitle('Movie Alerter - Stopped')
-            self.start_pushButton.setText('Start')
-            self.running = False
+            self._extracted_from_start_stop_button_4(
+                'Movie Alerter - Stopped', 'Start', False
+            )
+
+    def _extracted_from_start_stop_button_4(self, arg0, arg1, arg2):
+        self.setWindowTitle(arg0)
+        self.start_pushButton.setText(arg1)
+        self.running = arg2
 
     def add_to_blacklist(self, item=None):
         """
@@ -70,10 +75,9 @@ class CreateUICustom(CreateUI):
 
         if item:
             self.blacklist_listWidget.addItem(item)
-        else:
-            if len(self.blacklist_lineEdit.text()) > 0 and not self.blacklist_lineEdit.text().isspace():
-                self.blacklist_listWidget.addItem(self.blacklist_lineEdit.text())
-                self.blacklist_lineEdit.clear()
+        elif len(self.blacklist_lineEdit.text()) > 0 and not self.blacklist_lineEdit.text().isspace():
+            self.blacklist_listWidget.addItem(self.blacklist_lineEdit.text())
+            self.blacklist_lineEdit.clear()
 
     def remove_from_blacklist(self):
         """
@@ -113,9 +117,11 @@ class Config(ConfigParser):
         """
         Gets all the settings from the GUI and puts them in ConfigParser()
         """
-        black_list = ''
-        for i in range(self.pyqt_form.blacklist_listWidget.count()):
-            black_list += str(self.pyqt_form.blacklist_listWidget.item(i).text()) + ','
+        black_list = ''.join(
+            str(self.pyqt_form.blacklist_listWidget.item(i).text()) + ','
+            for i in range(self.pyqt_form.blacklist_listWidget.count())
+        )
+
         black_list = black_list[:-1]
 
         self['MAIN'] = {
@@ -132,10 +138,7 @@ class Config(ConfigParser):
         Return black list as a list instead of a string
         :return: blacklist in list form
         """
-        blacklist_list = []
-        for item in self.get('MAIN', 'blacklist').split(','):
-            blacklist_list.append(item)
-        return blacklist_list
+        return [item for item in self.get('MAIN', 'blacklist').split(',')]
 
     def save_cur_app_config(self):
         """
